@@ -4,7 +4,7 @@
 
 ### Building
 
-`cmake . -Wdeprecated -B build -G "Ninja Multi-Config" && cmake --build build --config Release|Debug`  
+`cmake . -Wdeprecated -B build -G "Ninja Multi-Config" && cmake --build build --config Debug && ./build/Sandbox/Debug/Sandbox`  
 
 ### Debugging
 
