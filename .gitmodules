@@ -1,0 +1,6 @@
+[submodule "Mjoelnir/external/cglm"]
+	path = Mjoelnir/external/cglm
+	url = git@github.com:singmyr/cglm.git
+[submodule "Mjoelnir/external/glfw"]
+	path = Mjoelnir/external/glfw
+	url = git@github.com:singmyr/glfw.git
