@@ -4,3 +4,6 @@
 [submodule "Mjoelnir/external/glfw"]
 	path = Mjoelnir/external/glfw
 	url = git@github.com:singmyr/glfw.git
+[submodule "Mjoelnir/external/glm"]
+	path = Mjoelnir/external/glm
+	url = git@github.com:singmyr/glm.git
