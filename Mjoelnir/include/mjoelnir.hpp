@@ -20,6 +20,8 @@
 #include <stdint.h>
 #include <limits.h>
 
+#include <vector>
+
 struct optional_uint32_t {
     bool hasValue;
     uint32_t value;
@@ -60,9 +62,9 @@ private:
     VkCommandPool commandPool;
     VkCommandBuffer* commandBuffers;
 
-    VkSemaphore* imageAvailableSemaphores;
-    VkSemaphore* renderFinishedSemaphores;
-    VkFence* inFlightFences;
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
 
     uint32_t currentFrame = 0;
 
@@ -74,14 +76,14 @@ private:
     void cleanup();
     bool drawFrame();
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-    bool createInstance();
+    void createInstance();
     bool setupDebugMessenger();
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR* capabilities);
     bool isDeviceSuitable(VkPhysicalDevice device);
-    bool pickPhysicalDevice();
+    void pickPhysicalDevice();
     bool createLogicalDevice();
-    bool createSurface();
+    void createSurface();
     bool createSwapChain();
     bool createImageViews();
     bool createRenderPass();
@@ -90,7 +92,7 @@ private:
     bool createCommandPool();
     bool createCommandBuffers();
     bool recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-    bool createSyncObjects();
+    void createSyncObjects();
     bool initVulkan();
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const VkSurfaceFormatKHR* availableFormats, uint32_t availableFormatsCount);
     VkPresentModeKHR chooseSwapPresentMode(const VkPresentModeKHR* availablePresentModes, uint32_t availablePresentModesCount);

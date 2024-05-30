@@ -99,29 +99,29 @@ uint32_t* readFileBinary(const char* filename, size_t* file_size) {
 
 bool checkValidationLayerSupport() {
     uint32_t layerCount = 0;
-    vkEnumerateInstanceLayerProperties(&layerCount, NULL);
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
-    VkLayerProperties* availableLayers = (VkLayerProperties*)malloc(layerCount*sizeof(VkLayerProperties));
-    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
     printf("\033[2mAvailable layers:\n");
-    for (int i = 0; i < layerCount; i++) {
-        printf("\t%s\n", availableLayers[i].layerName);
+    for (const auto& layerProperties : availableLayers) {
+        printf("\t%s\n", layerProperties.layerName);
     }
     printf("\033[0m");
 
-    for (int i = 0; i < sizeof(validationLayers)/sizeof(const char*); i++) {
+    for (const char* layerName : validationLayers) {
         bool found = false;
 
-        for (int j = 0; j < layerCount; j++) {
-            if (strcmp(validationLayers[i], availableLayers[j].layerName) == 0) {
+        for (const auto& layerProperties : availableLayers) {
+            if (strcmp(layerName, layerProperties.layerName) == 0) {
                 found = true;
                 break;
             }
         }
 
         if (!found) {
-            fprintf(stderr, "Missing required extension %s\n", validationLayers[i]);
+            fprintf(stderr, "Missing required extension %s\n", layerName);
             return false;
         }
     }
@@ -135,7 +135,7 @@ void DestroyDebugUtilsMessengerEXT(
     const VkAllocationCallbacks* pAllocator
 ) {
     PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (func != NULL) {
+    if (func != nullptr) {
         func(instance, debugMessenger, pAllocator);
     }
 }
@@ -146,18 +146,18 @@ bool isDeviceComplete(QueueFamilyIndices *indices) {
 
 bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
     uint32_t availableExtensionCount;
-    vkEnumerateDeviceExtensionProperties(device, NULL, &availableExtensionCount, NULL);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &availableExtensionCount, nullptr);
 
-    VkExtensionProperties* availableExtensions = (VkExtensionProperties*)malloc(availableExtensionCount * sizeof(VkExtensionProperties));
-    vkEnumerateDeviceExtensionProperties(device, NULL, &availableExtensionCount, availableExtensions);
+    std::vector<VkExtensionProperties> availableExtensions(availableExtensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &availableExtensionCount, availableExtensions.data());
 
     uint32_t requiredExtensionCount = (uint32_t)(sizeof(deviceExtensions)/sizeof(const char*));
 
     uint32_t foundExtensionCount = 0;
     for (int i = 0; i < requiredExtensionCount; i++) {
         bool found = false;
-        for (int j = 0; j < availableExtensionCount; j++) {
-            if (strcmp(deviceExtensions[i], availableExtensions[j].extensionName) == 0) {
+        for (const auto& extension : availableExtensions) {
+            if (strcmp(deviceExtensions[i], extension.extensionName) == 0) {
                 found = true;
                 break;
             }
@@ -180,7 +180,7 @@ void populateDebugMessengerCreateInfo(
     // createInfo->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     createInfo->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     createInfo->pfnUserCallback = debugCallback;
-    createInfo->pUserData = NULL;
+    createInfo->pUserData = nullptr;
 }
 
 VkResult CreateDebugUtilsMessengerEXT(
@@ -190,7 +190,7 @@ VkResult CreateDebugUtilsMessengerEXT(
     VkDebugUtilsMessengerEXT* pDebugMessenger)
 {
     PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-    if (func != NULL) {
+    if (func != nullptr) {
         return func(instance, createInfo, pAllocator, pDebugMessenger);
     } else {
         return VK_ERROR_EXTENSION_NOT_PRESENT;
@@ -279,9 +279,9 @@ VkShaderModule Mjoelnir::createShaderModule(uint32_t* code, size_t code_size) {
   createInfo.pCode = code;
 
   VkShaderModule shaderModule;
-  if (vkCreateShaderModule(device, &createInfo, NULL, &shaderModule) != VK_SUCCESS) {
+  if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
       fprintf(stderr, "Unable to create shader module\n");
-      return NULL;
+      return nullptr;
   }
 
   return shaderModule;
@@ -298,39 +298,39 @@ void Mjoelnir::initWindow() {
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-  window = glfwCreateWindow(WIDTH, HEIGHT, "Mjoelnir", NULL, NULL);
+  window = glfwCreateWindow(WIDTH, HEIGHT, "Mjoelnir", nullptr, nullptr);
 }
 
 void Mjoelnir::cleanup() {
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-      vkDestroySemaphore(device, imageAvailableSemaphores[i], NULL);
-      vkDestroySemaphore(device, renderFinishedSemaphores[i], NULL);
-      vkDestroyFence(device, inFlightFences[i], NULL);
+      vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+      vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+      vkDestroyFence(device, inFlightFences[i], nullptr);
   }
 
-  vkDestroyCommandPool(device, commandPool, NULL);
+  vkDestroyCommandPool(device, commandPool, nullptr);
 
   for (uint32_t i = 0; i < swapChainImageCount; i++) {
-      vkDestroyFramebuffer(device, swapChainFramebuffers[i], NULL);
+      vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
   }
 
-  vkDestroyPipeline(device, graphicsPipeline, NULL);
-  vkDestroyPipelineLayout(device, pipelineLayout, NULL);
-  vkDestroyRenderPass(device, renderPass, NULL);
+  vkDestroyPipeline(device, graphicsPipeline, nullptr);
+  vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+  vkDestroyRenderPass(device, renderPass, nullptr);
 
   for (uint32_t i = 0; i < swapChainImageCount; i++) {
-      vkDestroyImageView(device, swapChainImageViews[i], NULL);
+      vkDestroyImageView(device, swapChainImageViews[i], nullptr);
   }
 
-  vkDestroySwapchainKHR(device, swapChain, NULL);
-  vkDestroyDevice(device, NULL);
+  vkDestroySwapchainKHR(device, swapChain, nullptr);
+  vkDestroyDevice(device, nullptr);
 
   if (enableValidationLayers) {
-      DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+      DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
   }
 
-  vkDestroySurfaceKHR(instance, surface, NULL);
-  vkDestroyInstance(instance, NULL);
+  vkDestroySurfaceKHR(instance, surface, nullptr);
+  vkDestroyInstance(instance, nullptr);
 
   glfwDestroyWindow(window);
   glfwTerminate();
@@ -417,9 +417,9 @@ SwapChainSupportDetails Mjoelnir::querySwapChainSupport(VkPhysicalDevice device)
   return details;
 }
 
-bool Mjoelnir::createInstance() {
+void Mjoelnir::createInstance() {
   if (enableValidationLayers && !checkValidationLayerSupport()) {
-      return false;
+      throw std::runtime_error("");
   }
 
   VkApplicationInfo appInfo = {};
@@ -452,16 +452,14 @@ bool Mjoelnir::createInstance() {
   } else {
       createInfo.enabledLayerCount = 0;
 
-      createInfo.pNext = NULL;
+      createInfo.pNext = nullptr;
   }
 
-  VkResult result = vkCreateInstance(&createInfo, NULL, &instance);
+  VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
   if (result != VK_SUCCESS) {
       fprintf(stderr, "Unable to create instance (%s)\n", string_VkResult(result));
-      return false;
+      throw std::runtime_error("Unable to create instance");
   }
-
-  return true;
 }
 
 bool Mjoelnir::setupDebugMessenger() {
@@ -552,29 +550,28 @@ bool Mjoelnir::isDeviceSuitable(VkPhysicalDevice device) {
   return isDeviceComplete(&indices) && extensionsSupported && swapChainAdequate;
 }
 
-bool Mjoelnir::pickPhysicalDevice() {
+void Mjoelnir::pickPhysicalDevice() {
   uint32_t deviceCount = 0;
-  vkEnumeratePhysicalDevices(instance, &deviceCount, NULL);
+  vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
   if (deviceCount == 0) {
-      return false;
+      throw std::runtime_error("Failed to find GPUs with Vulkan support");
   }
 
-  VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(deviceCount * sizeof(VkPhysicalDevice));
-  vkEnumeratePhysicalDevices(instance, &deviceCount, devices);
+  // VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(deviceCount * sizeof(VkPhysicalDevice));
+  std::vector<VkPhysicalDevice> devices(deviceCount);
+  vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-  for (int i = 0; i < deviceCount; i++) {
-      if (isDeviceSuitable(devices[i])) {
-          physicalDevice = devices[i];
-          return true;
+  for (const auto& device : devices) {
+      if (isDeviceSuitable(device)) {
+          physicalDevice = device;
+          break;
       }
   }
 
-  // if (physicalDevice == VK_NULL_HANDLE) {
-  //     return false;
-  // }
-
-  return false;
+  if (physicalDevice == VK_NULL_HANDLE) {
+      throw std::runtime_error("Failed to find suitable physical device");
+  }
 }
 
 bool Mjoelnir::createLogicalDevice() {
@@ -649,13 +646,10 @@ bool Mjoelnir::createLogicalDevice() {
   return true;
 }
 
-bool Mjoelnir::createSurface() {
+void Mjoelnir::createSurface() {
   if (glfwCreateWindowSurface(instance, window, NULL, &surface) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create window surface\n");
-      return false;
+      throw std::runtime_error("Failed to create window surface\n");
   }
-
-  return true;
 }
 
 bool Mjoelnir::createSwapChain() {
@@ -1179,11 +1173,11 @@ bool Mjoelnir::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
   return true;
 }
 
-bool Mjoelnir::createSyncObjects() {
-  imageAvailableSemaphores = (VkSemaphore*)malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
-  renderFinishedSemaphores = (VkSemaphore*)malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
+void Mjoelnir::createSyncObjects() {
+  imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+  renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 
-  inFlightFences = (VkFence*)malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkFence));
+  inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
   VkSemaphoreCreateInfo semaphoreInfo = {};
   semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -1198,31 +1192,18 @@ bool Mjoelnir::createSyncObjects() {
           vkCreateSemaphore(device, &semaphoreInfo, NULL, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
           vkCreateFence(device, &fenceInfo, NULL, &inFlightFences[i]) != VK_SUCCESS
       ) {
-          fprintf(stderr, "Failed to create synchronization objects\n");
-          return false;
+          throw std::runtime_error("Failed to create synchronization objects");
       }
   }
-
-  return true;
 }
 
 bool Mjoelnir::initVulkan() {
-  if (!createInstance()) {
-      fprintf(stderr, "Unable to create instance\n");
-      return false;
-  }
+  createInstance();
 
   setupDebugMessenger();
 
-  if (!createSurface()) {
-      fprintf(stderr, "Failed to create window surface\n");
-      return false;
-  }
-
-  if (!pickPhysicalDevice()) {
-      fprintf(stderr, "Failed to find GPUs with Vulkan support\n");
-      return false;
-  }
+  createSurface();
+  pickPhysicalDevice();
 
   if (!createLogicalDevice()) {
       fprintf(stderr, "Failed to create logical device\n");
@@ -1264,10 +1245,7 @@ bool Mjoelnir::initVulkan() {
       return false;
   }
 
-  if (!createSyncObjects()) {
-      fprintf(stderr, "Failed to create synchronization objects\n");
-      return false;
-  }
+  createSyncObjects();
 
   return true;
 }
