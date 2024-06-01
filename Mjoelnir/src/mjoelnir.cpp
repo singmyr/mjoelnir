@@ -1,5 +1,9 @@
 #include "mjoelnir.hpp"
 #include <iostream>
+#include <fstream>
+#include <set>
+#include <limits>
+#include <algorithm>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -12,11 +16,11 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
     const bool enableValidationLayers = false;
 #endif
 
-const char* validationLayers[] = {
+std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation",
 };
 
-const char* deviceExtensions[] = {
+std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     "VK_KHR_portability_subset",
 };
@@ -33,7 +37,8 @@ uint32_t uint32_t_clamp(uint32_t value, uint32_t min, uint32_t max) {
     return value;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+// todo: why was this a class member in the tutorial?
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -60,42 +65,61 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
      */
 
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-        fprintf(stderr, "\033[1m\033[38;5;9m");
+        std::cerr << "\033[1m\033[38;5;9m";
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        fprintf(stderr, "\033[1m\033[38;5;11m");
+        std::cerr << "\033[1m\033[38;5;11m";
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
-        fprintf(stderr, "\033[2m\033[38;5;45m");
+        std::cerr << "\033[2m\033[38;5;45m";
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
-        fprintf(stderr, "\033[2m");
+        std::cerr << "\033[2m";
     }
 
-    fprintf(stderr, "Debug message: %s\n", pCallbackData->pMessage);
 
-    fprintf(stderr, "\033[0m");
+    std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+
+    std::cerr << "\033[0m";
 
     return VK_FALSE;
 }
 
-uint32_t* readFileBinary(const char* filename, size_t* file_size) {
-    FILE* file_ptr = fopen(filename, "rb");
-    if (!file_ptr) {
-        fprintf(stderr, "Unable to read file: %s\n", filename);
-        return NULL;
-    }
+static std::vector<char> readFile(const std::string& fileName) {
+  std::ifstream file(fileName, std::ios::ate | std::ios::binary);
 
-    fseek(file_ptr, 0L, SEEK_END);
-    *file_size = ftell(file_ptr);
+  if (!file.is_open()) {
+    throw std::runtime_error("Failed to open file");
+  }
 
-    // fseek(file_ptr, 0L, SEEK_SET);
-    rewind(file_ptr);
+  size_t fileSize = (size_t) file.tellg();
+  std::vector<char> buffer(fileSize);
 
-    uint32_t* file_buffer = (uint32_t*)malloc(*file_size * sizeof(uint32_t));
-    fread(file_buffer, sizeof(uint32_t), *file_size/sizeof(uint32_t), file_ptr);
+  file.seekg(0);
+  file.read(buffer.data(), fileSize);
 
-    fclose(file_ptr);
+  file.close();
 
-    return file_buffer;
+  return buffer;
 }
+
+// uint32_t* readFileBinary(const char* filename, size_t* file_size) {
+//     FILE* file_ptr = fopen(filename, "rb");
+//     if (!file_ptr) {
+//         fprintf(stderr, "Unable to read file: %s\n", filename);
+//         return NULL;
+//     }
+
+//     fseek(file_ptr, 0L, SEEK_END);
+//     *file_size = ftell(file_ptr);
+
+//     // fseek(file_ptr, 0L, SEEK_SET);
+//     rewind(file_ptr);
+
+//     uint32_t* file_buffer = (uint32_t*)malloc(*file_size * sizeof(uint32_t));
+//     fread(file_buffer, sizeof(uint32_t), *file_size/sizeof(uint32_t), file_ptr);
+
+//     fclose(file_ptr);
+
+//     return file_buffer;
+// }
 
 bool checkValidationLayerSupport() {
     uint32_t layerCount = 0;
@@ -121,7 +145,7 @@ bool checkValidationLayerSupport() {
         }
 
         if (!found) {
-            fprintf(stderr, "Missing required extension %s\n", layerName);
+            std::cerr << "Missing required extension" << layerName << std::endl;
             return false;
         }
     }
@@ -134,14 +158,10 @@ void DestroyDebugUtilsMessengerEXT(
     VkDebugUtilsMessengerEXT debugMessenger,
     const VkAllocationCallbacks* pAllocator
 ) {
-    PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr) {
         func(instance, debugMessenger, pAllocator);
     }
-}
-
-bool isDeviceComplete(QueueFamilyIndices *indices) {
-    return indices->graphicsFamily.hasValue && indices->presentFamily.hasValue;
 }
 
 bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
@@ -151,36 +171,25 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
     std::vector<VkExtensionProperties> availableExtensions(availableExtensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &availableExtensionCount, availableExtensions.data());
 
-    uint32_t requiredExtensionCount = (uint32_t)(sizeof(deviceExtensions)/sizeof(const char*));
+    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 
-    uint32_t foundExtensionCount = 0;
-    for (int i = 0; i < requiredExtensionCount; i++) {
-        bool found = false;
-        for (const auto& extension : availableExtensions) {
-            if (strcmp(deviceExtensions[i], extension.extensionName) == 0) {
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            foundExtensionCount++;
-        } else {
-            fprintf(stderr, "Missing extension support for: %s\n", deviceExtensions[i]);
-        }
+    for (const auto& extension : availableExtensions) {
+        requiredExtensions.erase(extension.extensionName);
     }
 
-    return foundExtensionCount == requiredExtensionCount;
+    return requiredExtensions.empty();
 }
 
 void populateDebugMessengerCreateInfo(
-    VkDebugUtilsMessengerCreateInfoEXT* createInfo
+    VkDebugUtilsMessengerCreateInfoEXT& createInfo
 ) {
-    createInfo->sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    // createInfo->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    createInfo->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo->pfnUserCallback = debugCallback;
-    createInfo->pUserData = nullptr;
+  createInfo = {};
+  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+  createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+  // createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+  createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+  createInfo.pfnUserCallback = debugCallback;
+  createInfo.pUserData = nullptr;
 }
 
 VkResult CreateDebugUtilsMessengerEXT(
@@ -189,7 +198,7 @@ VkResult CreateDebugUtilsMessengerEXT(
     const VkAllocationCallbacks* pAllocator,
     VkDebugUtilsMessengerEXT* pDebugMessenger)
 {
-    PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
         return func(instance, createInfo, pAllocator, pDebugMessenger);
     } else {
@@ -197,16 +206,15 @@ VkResult CreateDebugUtilsMessengerEXT(
     }
 }
 
-const char** getRequiredExtensions(uint32_t* requiredExtensionCount) {
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, NULL);
-    // Does this needs to be freed?
-    VkExtensionProperties* extensions = (VkExtensionProperties*)malloc(extensionCount * sizeof(VkExtensionProperties));
-    vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, extensions);
+std::vector<const char*> getRequiredExtensions() {
+    uint32_t availableExtensionsCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionsCount, nullptr);
+    std::vector<VkExtensionProperties> availableExtensions(availableExtensionsCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionsCount, availableExtensions.data());
 
     printf("\033[2mAvailable extensions:\n");
-    for (int i = 0; i < extensionCount; i++) {
-        printf("\t%s\n", extensions[i].extensionName);
+    for (const VkExtensionProperties& availableExtension : availableExtensions) {
+        std::cout << '\t' << availableExtension.extensionName << std::endl;
     }
     printf("\033[0m");
 
@@ -218,52 +226,35 @@ const char** getRequiredExtensions(uint32_t* requiredExtensionCount) {
     for (int i = 0; i < glfwExtensionCount; i++) {
         bool found = false;
 
-        for (int j = 0; j < extensionCount; j++) {
-            if (strcmp(glfwExtensions[i], extensions[j].extensionName) == 0) {
+        for (int j = 0; j < availableExtensionsCount; j++) {
+            if (strcmp(glfwExtensions[i], availableExtensions[j].extensionName) == 0) {
                 found = true;
                 break;
             }
         }
 
         if (!found) {
-            fprintf(stderr, "Missing required extension %s\n", glfwExtensions[i]);
-            return NULL;
+            throw std::runtime_error((std::string("Missing required extension ").append(glfwExtensions[i])));
         }
     }
 
-    const char* additionalRequiredExtensions[] = {
+    std::vector<const char*> additionalRequiredExtensions = {
         VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
-    uint32_t additionalRequiredExtensionCount = (uint32_t)(sizeof(additionalRequiredExtensions)/sizeof(const char*));
 
     if (enableValidationLayers) {
-        additionalRequiredExtensionCount++;
+      additionalRequiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
-    // todo: rewrite this login to instead use 1 realloc call to have everything in 1 nice array instead of 2 with one on the side.
-    const char** requiredExtensions = (const char**)malloc((glfwExtensionCount + additionalRequiredExtensionCount) * sizeof(const char*));
-    for (int i = 0; i < glfwExtensionCount + 1; i++) {
-        // Does this needs to be freed?
-        requiredExtensions[i] = (const char*)malloc(strlen(glfwExtensions[i]+1));
-        requiredExtensions[i] = glfwExtensions[i];
+    std::vector<const char*> requiredExtensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+    for (const auto& additionalRequiredExtension : additionalRequiredExtensions) {
+      requiredExtensions.push_back(additionalRequiredExtension);
     }
-
-    // Does this needs to be freed?
-    requiredExtensions[glfwExtensionCount] = (const char*)malloc(strlen(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)+1);
-    requiredExtensions[glfwExtensionCount] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
-
-    // Does this needs to be freed?
-    requiredExtensions[glfwExtensionCount+1] = (const char*)malloc(strlen(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)+1);
-    requiredExtensions[glfwExtensionCount+1] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-
-    requiredExtensions[glfwExtensionCount+2] = (const char*)malloc(strlen(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)+1);
-    requiredExtensions[glfwExtensionCount+2] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
-
-    *requiredExtensionCount = glfwExtensionCount + additionalRequiredExtensionCount;
 
     printf("\033[2mmRequired extensions:\n");
-    for (int i = 0; i < *requiredExtensionCount; i++) {
+    for (int i = 0; i < requiredExtensions.size(); i++) {
         printf("\t%s\n", requiredExtensions[i]);
     }
     printf("\033[0m");
@@ -271,17 +262,16 @@ const char** getRequiredExtensions(uint32_t* requiredExtensionCount) {
     return requiredExtensions;
 }
 
-VkShaderModule Mjoelnir::createShaderModule(uint32_t* code, size_t code_size) {
+VkShaderModule Mjoelnir::createShaderModule(const std::vector<char>& code) {
   VkShaderModuleCreateInfo createInfo = {};
   createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  createInfo.codeSize = code_size;
+  createInfo.codeSize = code.size();
 
-  createInfo.pCode = code;
+  createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
   VkShaderModule shaderModule;
   if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create shader module\n");
-      return nullptr;
+      throw std::runtime_error("Unable to create shader module");
   }
 
   return shaderModule;
@@ -302,7 +292,7 @@ void Mjoelnir::initWindow() {
 }
 
 void Mjoelnir::cleanup() {
-  for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
       vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
       vkDestroyFence(device, inFlightFences[i], nullptr);
@@ -310,16 +300,16 @@ void Mjoelnir::cleanup() {
 
   vkDestroyCommandPool(device, commandPool, nullptr);
 
-  for (uint32_t i = 0; i < swapChainImageCount; i++) {
-      vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+  for (auto framebuffer : swapChainFramebuffers) {
+      vkDestroyFramebuffer(device, framebuffer, nullptr);
   }
 
   vkDestroyPipeline(device, graphicsPipeline, nullptr);
   vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
   vkDestroyRenderPass(device, renderPass, nullptr);
 
-  for (uint32_t i = 0; i < swapChainImageCount; i++) {
-      vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+  for (auto imageView : swapChainImageViews) {
+      vkDestroyImageView(device, imageView, nullptr);
   }
 
   vkDestroySwapchainKHR(device, swapChain, nullptr);
@@ -336,7 +326,7 @@ void Mjoelnir::cleanup() {
   glfwTerminate();
 }
 
-bool Mjoelnir::drawFrame() {
+void Mjoelnir::drawFrame() {
   // At a high level, rendering a frame in Vulkan consists of a common set of steps:
   // Wait for the previous frame to finish
   // Acquire an image from the swap chain
@@ -351,10 +341,9 @@ bool Mjoelnir::drawFrame() {
   vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
   vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-
   recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-  VkSubmitInfo submitInfo = {};
+  VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
   submitInfo.commandBufferCount = 1;
@@ -371,11 +360,10 @@ bool Mjoelnir::drawFrame() {
   submitInfo.pSignalSemaphores = signalSemaphores;
 
   if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to submit draw command buffer\n");
-      return false;
+      throw std::runtime_error("Failed to submit draw command buffer");
   }
 
-  VkPresentInfoKHR presentInfo = {};
+  VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
   presentInfo.waitSemaphoreCount = 1;
@@ -386,13 +374,11 @@ bool Mjoelnir::drawFrame() {
   presentInfo.pSwapchains = swapChains;
   presentInfo.pImageIndices = &imageIndex;
 
-  presentInfo.pResults = NULL; // Optional
+  presentInfo.pResults = nullptr; // Optional
 
   vkQueuePresentKHR(presentQueue, &presentInfo);
 
   currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
-  return true;
 }
 
 SwapChainSupportDetails Mjoelnir::querySwapChainSupport(VkPhysicalDevice device) {
@@ -400,18 +386,20 @@ SwapChainSupportDetails Mjoelnir::querySwapChainSupport(VkPhysicalDevice device)
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
 
-  vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &details.formatCount, NULL);
+  uint32_t formatCount;
+  vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
 
-  if (details.formatCount > 0) {
-      details.formats = (VkSurfaceFormatKHR*)malloc(details.formatCount * sizeof(VkSurfaceFormatKHR));
-      vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &details.formatCount, details.formats);
+  if (formatCount > 0) {
+      details.formats.resize(formatCount);
+      vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
   }
 
-  vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &details.presentModeCount, NULL);
+  uint32_t presentModeCount;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
 
-  if (details.presentModeCount > 0) {
-      details.presentModes = (VkPresentModeKHR*)malloc(details.presentModeCount * sizeof(VkPresentModeKHR));
-      vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &details.presentModeCount, details.presentModes);
+  if (presentModeCount > 0) {
+      details.presentModes.resize(presentModeCount);
+      vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
   }
 
   return details;
@@ -419,10 +407,10 @@ SwapChainSupportDetails Mjoelnir::querySwapChainSupport(VkPhysicalDevice device)
 
 void Mjoelnir::createInstance() {
   if (enableValidationLayers && !checkValidationLayerSupport()) {
-      throw std::runtime_error("");
+      throw std::runtime_error("Validation layers requested, but not available!");
   }
 
-  VkApplicationInfo appInfo = {};
+  VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = "Mjoelnir Sandbox";
   appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -430,24 +418,23 @@ void Mjoelnir::createInstance() {
   appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
   appInfo.apiVersion = VK_API_VERSION_1_0;
 
-  VkInstanceCreateInfo createInfo = {};
+  VkInstanceCreateInfo createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   createInfo.pApplicationInfo = &appInfo;
 
   createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 
-  uint32_t extensionCount = 0;
-  const char** extensions = getRequiredExtensions(&extensionCount);
+  std::vector<const char*> extensions = getRequiredExtensions();
 
-  createInfo.enabledExtensionCount = extensionCount;
-  createInfo.ppEnabledExtensionNames = extensions;
+  createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+  createInfo.ppEnabledExtensionNames = extensions.data();
 
   VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
   if (enableValidationLayers) {
-      createInfo.enabledLayerCount = (uint32_t)(sizeof(validationLayers)/sizeof(const char*));
-      createInfo.ppEnabledLayerNames = validationLayers;
+      createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+      createInfo.ppEnabledLayerNames = validationLayers.data();
 
-      populateDebugMessengerCreateInfo(&debugCreateInfo);
+      populateDebugMessengerCreateInfo(debugCreateInfo);
       createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
   } else {
       createInfo.enabledLayerCount = 0;
@@ -457,97 +444,97 @@ void Mjoelnir::createInstance() {
 
   VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
   if (result != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create instance (%s)\n", string_VkResult(result));
-      throw std::runtime_error("Unable to create instance");
+      throw std::runtime_error(std::string("Unable to create instance: ").append(string_VkResult(result)));
   }
 }
 
-bool Mjoelnir::setupDebugMessenger() {
+void Mjoelnir::setupDebugMessenger() {
   if (!enableValidationLayers) {
-      return true;
+      return;
   }
 
-  VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
-  populateDebugMessengerCreateInfo(&createInfo);
+  VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+  populateDebugMessengerCreateInfo(createInfo);
 
-  if (CreateDebugUtilsMessengerEXT(instance, &createInfo, NULL, &debugMessenger) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create debug messenger\n");
-      return false;
+  if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+      throw std::runtime_error("Unable to create debug messenger");
   }
-
-  return true;
 }
 
 QueueFamilyIndices Mjoelnir::findQueueFamilies(VkPhysicalDevice device) {
   QueueFamilyIndices indices;
 
   uint32_t queueFamilyCount = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, NULL);
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
   // The VkQueueFamilyProperties struct contains some details about the queue family,
   // including the type of operations that are supported and the number of queues that can be created based on that family.
-  VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)malloc(queueFamilyCount * sizeof(VkQueueFamilyProperties));
-  vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies);
+  std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
-  for (int i = 0; i < queueFamilyCount; i++) {
+  int i = 0;
+  for (const auto& queueFamily : queueFamilies) {
       // todo: For improved performance, prioritize devices that support both graphics and present.
-      if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-          indices.graphicsFamily.hasValue = true;
-          indices.graphicsFamily.value = i;
+      if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+          indices.graphicsFamily = i;
       }
 
       VkBool32 presentSupport = false;
       vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
       if (presentSupport) {
-          indices.presentFamily.hasValue = true;
-          indices.presentFamily.value = i;
+          indices.presentFamily = i;
       }
 
-      if (isDeviceComplete(&indices)) {
+      if (indices.isComplete()) {
           break;
       }
+
+      i++;
   }
 
   return indices;
 }
 
-VkExtent2D Mjoelnir::chooseSwapExtent(const VkSurfaceCapabilitiesKHR* capabilities) {
-  if (capabilities->currentExtent.width != UINT32_MAX) {
-      return capabilities->currentExtent;
+VkExtent2D Mjoelnir::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+  if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+      return capabilities.currentExtent;
   }
 
   int width, height;
   glfwGetFramebufferSize(window, &width, &height);
 
-  VkExtent2D actualExtent;
+  VkExtent2D actualExtent = {
+    static_cast<uint32_t>(width),
+    static_cast<uint32_t>(height)
+  };
 
-  actualExtent.width = uint32_t_clamp((uint32_t)width, capabilities->minImageExtent.width, capabilities->maxImageExtent.width);
-  actualExtent.height = uint32_t_clamp((uint32_t)height, capabilities->minImageExtent.height, capabilities->maxImageExtent.height);
+  actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+  actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
   return actualExtent;
 }
 
 bool Mjoelnir::isDeviceSuitable(VkPhysicalDevice device) {
-  VkPhysicalDeviceProperties deviceProperties;
-  vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
-  VkPhysicalDeviceFeatures deviceFeatures;
-  vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+    VkPhysicalDeviceFeatures deviceFeatures;
+    vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-  // todo: add some sort of GPU priority
+    // todo: add some sort of GPU priority
 
-  QueueFamilyIndices indices = findQueueFamilies(device);
+    QueueFamilyIndices indices = findQueueFamilies(device);
 
-  bool extensionsSupported = checkDeviceExtensionSupport(device);
+    bool extensionsSupported = checkDeviceExtensionSupport(device);
 
-  bool swapChainAdequate = false;
-  if (extensionsSupported) {
-      SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-      swapChainAdequate = swapChainSupport.formatCount > 0 && swapChainSupport.presentModeCount > 0;
-  }
+    bool swapChainAdequate = false;
+    if (extensionsSupported) {
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+        swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+    }
 
-  return isDeviceComplete(&indices) && extensionsSupported && swapChainAdequate;
+    return indices.isComplete() && extensionsSupported && swapChainAdequate;
 }
 
 void Mjoelnir::pickPhysicalDevice() {
@@ -574,90 +561,65 @@ void Mjoelnir::pickPhysicalDevice() {
   }
 }
 
-bool Mjoelnir::createLogicalDevice() {
+void Mjoelnir::createLogicalDevice() {
   QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
-  uint32_t queueFamilies[] = {indices.graphicsFamily.value, indices.presentFamily.value};
-  uint32_t queueFamilyCount = sizeof(queueFamilies) / sizeof(uint32_t);
-  uint32_t uniqueQueueFamilyCount = 0;
-  uint32_t* uniqueQueueFamilies = (uint32_t*)malloc(0);
+  std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+  std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
-  for (int i = 0; i < queueFamilyCount; i++) {
-      bool in = false;
-
-      for (int j = 0; j < uniqueQueueFamilyCount; j++) {
-          if (queueFamilies[i] == uniqueQueueFamilies[j]) {
-              in = true;
-              break;
-          }
-      }
-
-      if (!in) {
-          uniqueQueueFamilyCount++;
-          uniqueQueueFamilies = (uint32_t*)realloc(uniqueQueueFamilies, uniqueQueueFamilyCount);
-          uniqueQueueFamilies[uniqueQueueFamilyCount-1] = queueFamilies[i];
-      }
-  }
-
-  VkDeviceQueueCreateInfo* queueCreateInfos = (VkDeviceQueueCreateInfo*)malloc(uniqueQueueFamilyCount * sizeof(VkDeviceQueueCreateInfo));
-  for (int i = 0; i < uniqueQueueFamilyCount; i++) {
-      VkDeviceQueueCreateInfo queueCreateInfo = {};
+  float queuePriority = 1.0f;
+  for (uint32_t queueFamily : uniqueQueueFamilies) {
+      VkDeviceQueueCreateInfo queueCreateInfo{};
       queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-      queueCreateInfo.queueFamilyIndex = uniqueQueueFamilies[i];
+      queueCreateInfo.queueFamilyIndex = queueFamily;
       queueCreateInfo.queueCount = 1;
 
       // queue priorities between 0.0 and 1.0
-      float queuePriority = 1.0f;
       queueCreateInfo.pQueuePriorities = &queuePriority;
 
-      queueCreateInfos[i] = queueCreateInfo;
+      queueCreateInfos.push_back(queueCreateInfo);
   }
 
-  VkPhysicalDeviceFeatures deviceFeatures = {};
+  VkPhysicalDeviceFeatures deviceFeatures{};
 
-  VkDeviceCreateInfo createInfo = {};
+  VkDeviceCreateInfo createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
-  createInfo.pQueueCreateInfos = queueCreateInfos;
-  createInfo.queueCreateInfoCount = uniqueQueueFamilyCount;
+  createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+  createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
   createInfo.pEnabledFeatures = &deviceFeatures;
 
-  uint32_t deviceExtensionCount = sizeof(deviceExtensions)/sizeof(const char*);
-
-  createInfo.enabledExtensionCount = deviceExtensionCount;
-  createInfo.ppEnabledExtensionNames = deviceExtensions;
+  createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+  createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
   if (enableValidationLayers) {
-      createInfo.enabledLayerCount = (sizeof(validationLayers)/sizeof(const char*));
-      createInfo.ppEnabledLayerNames = validationLayers;
+      createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+      createInfo.ppEnabledLayerNames = validationLayers.data();
   } else {
       createInfo.enabledLayerCount = 0;
   }
 
-  if (vkCreateDevice(physicalDevice, &createInfo, NULL, &device) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create logical device\n");
-      return false;
+  if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+      throw std::runtime_error("Failed to create logical device");
   }
 
-  vkGetDeviceQueue(device, indices.graphicsFamily.value, 0, &graphicsQueue);
-  vkGetDeviceQueue(device, indices.presentFamily.value, 0, &presentQueue);
-
-  return true;
+  vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+  vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
 void Mjoelnir::createSurface() {
-  if (glfwCreateWindowSurface(instance, window, NULL, &surface) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create window surface\n");
+  if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+      throw std::runtime_error("Failed to create window surface");
   }
 }
 
-bool Mjoelnir::createSwapChain() {
+void Mjoelnir::createSwapChain() {
   SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
 
-  VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats, swapChainSupport.formatCount);
-  VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes, swapChainSupport.presentModeCount);
-  VkExtent2D extent = chooseSwapExtent(&swapChainSupport.capabilities);
+  VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+  VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+  VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
   uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
   // swapChainSupport.capabilities.maxImageCount == 0 means there is no maximum.
@@ -665,7 +627,7 @@ bool Mjoelnir::createSwapChain() {
       imageCount = swapChainSupport.capabilities.maxImageCount;
   }
 
-  VkSwapchainCreateInfoKHR createInfo;
+  VkSwapchainCreateInfoKHR createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
   createInfo.surface = surface;
   createInfo.minImageCount = imageCount;
@@ -678,9 +640,9 @@ bool Mjoelnir::createSwapChain() {
   createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
   QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-  uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value, indices.presentFamily.value};
+  uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
-  if (indices.graphicsFamily.value != indices.presentFamily.value) {
+  if (indices.graphicsFamily.value() != indices.presentFamily.value()) {
       // Images can be used across multiple queue families without explicit ownership transfers
       createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
       createInfo.queueFamilyIndexCount = 2;
@@ -690,7 +652,7 @@ bool Mjoelnir::createSwapChain() {
       // This option offers the best performance
       createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
       createInfo.queueFamilyIndexCount = 0;
-      createInfo.pQueueFamilyIndices = NULL;
+      createInfo.pQueueFamilyIndices = nullptr;
   }
 
   createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
@@ -702,27 +664,23 @@ bool Mjoelnir::createSwapChain() {
 
   createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-  if (vkCreateSwapchainKHR(device, &createInfo, NULL, &swapChain) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create swap chain\n");
-      return false;
+  if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+      throw std::runtime_error("Failed to create swap chain");
   }
 
   swapChainImageFormat = surfaceFormat.format;
   swapChainExtent = extent;
 
-  vkGetSwapchainImagesKHR(device, swapChain, &imageCount, NULL);
-  swapChainImages = (VkImage*)malloc(imageCount * sizeof(VkImage));
-  swapChainImageCount = imageCount;
-  vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages);
-
-  return true;
+  vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+  swapChainImages.resize(imageCount);
+  vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
 }
 
-bool Mjoelnir::createImageViews() {
-  swapChainImageViews = (VkImageView*)malloc(swapChainImageCount * sizeof(VkImageView));
+void Mjoelnir::createImageViews() {
+  swapChainImageViews.resize(swapChainImages.size());
 
-  for (uint32_t i = 0; i < swapChainImageCount; i++) {
-      VkImageViewCreateInfo createInfo = {};
+  for (size_t i = 0; i < swapChainImages.size(); i++) {
+      VkImageViewCreateInfo createInfo{};
       createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
       createInfo.image = swapChainImages[i];
       
@@ -742,17 +700,14 @@ bool Mjoelnir::createImageViews() {
       createInfo.subresourceRange.baseArrayLayer = 0;
       createInfo.subresourceRange.layerCount = 1;
 
-      if (vkCreateImageView(device, &createInfo, NULL, &swapChainImageViews[i]) != VK_SUCCESS) {
-          fprintf(stderr, "Failed to create image view\n");
-          return false;
+      if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+          throw std::runtime_error("Failed to create image view");
       }
   }
-
-  return true;
 }
 
-bool Mjoelnir::createRenderPass() {
-  VkAttachmentDescription colorAttachment = {};
+void Mjoelnir::createRenderPass() {
+  VkAttachmentDescription colorAttachment{};
   colorAttachment.format = swapChainImageFormat;
   // No multisampling yet, stick to 1 bit.
   colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -771,11 +726,11 @@ bool Mjoelnir::createRenderPass() {
   colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-  VkAttachmentReference colorAttachmentRef = {};
+  VkAttachmentReference colorAttachmentRef{};
   colorAttachmentRef.attachment = 0;
   colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-  VkSubpassDescription subpass = {};
+  VkSubpassDescription subpass{};
   subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
   subpass.colorAttachmentCount = 1;
   // The index of the attachment in this array is directly referenced from the fragment shader with the layout(location = 0) out vec4 outColor directive!
@@ -786,7 +741,7 @@ bool Mjoelnir::createRenderPass() {
   //     pDepthStencilAttachment: Attachment for depth and stencil data
   //     pPreserveAttachments: Attachments that are not used by this subpass, but for which the data must be preserved
 
-  VkRenderPassCreateInfo renderPassInfo = {};
+  VkRenderPassCreateInfo renderPassInfo{};
   renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
   // The VkAttachmentReference objects reference attachments using the indices of this array.
   renderPassInfo.attachmentCount = 1;
@@ -794,7 +749,7 @@ bool Mjoelnir::createRenderPass() {
   renderPassInfo.subpassCount = 1;
   renderPassInfo.pSubpasses = &subpass;
 
-  VkSubpassDependency dependency = {};
+  VkSubpassDependency dependency{};
   dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
   dependency.dstSubpass = 0;
   dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -805,34 +760,29 @@ bool Mjoelnir::createRenderPass() {
   renderPassInfo.dependencyCount = 1;
   renderPassInfo.pDependencies = &dependency;
 
-  if (vkCreateRenderPass(device, &renderPassInfo, NULL, &renderPass) != VK_SUCCESS) {
-      fprintf(stderr, "Failed to create render pass\n");
-      return false;
+  if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+      throw std::runtime_error("Failed to create render pass");
   }
-
-  return true;
 }
 
-bool Mjoelnir::createGraphicsPipeline() {
-  size_t vert_shader_size;
-  size_t frag_shader_size;
+void Mjoelnir::createGraphicsPipeline() {
   // todo: Need a good way to handle these paths without being so specific.
-  uint32_t* vert_shader_code = readFileBinary("/Users/singmyr/dev/mjoelnir/Mjoelnir/src/shaders/shader_vert.spv", &vert_shader_size);
-  uint32_t* frag_shader_code = readFileBinary("/Users/singmyr/dev/mjoelnir/Mjoelnir/src/shaders/shader_frag.spv", &frag_shader_size);
+  auto vert_shader_code = readFile("/Users/singmyr/dev/mjoelnir/Mjoelnir/src/shaders/shader_vert.spv");
+  auto frag_shader_code = readFile("/Users/singmyr/dev/mjoelnir/Mjoelnir/src/shaders/shader_frag.spv");
 
-  VkShaderModule vert_shader_module = createShaderModule(vert_shader_code, vert_shader_size);
-  VkShaderModule frag_shader_module = createShaderModule(frag_shader_code, frag_shader_size);
+  VkShaderModule vert_shader_module = createShaderModule(vert_shader_code);
+  VkShaderModule frag_shader_module = createShaderModule(frag_shader_code);
 
   // todo: Necessary?
   // free(vert_shader_code);
   // free(frag_shader_code);
 
-  VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
+  VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
   vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
   vertShaderStageInfo.module = vert_shader_module;
   vertShaderStageInfo.pName = "main";
-  vertShaderStageInfo.pSpecializationInfo = NULL;
+  vertShaderStageInfo.pSpecializationInfo = nullptr;
   /*
       pSpecializationInfo
 
@@ -841,23 +791,23 @@ bool Mjoelnir::createGraphicsPipeline() {
       This is more efficient than configuring the shader using variables at render time, because the compiler can do optimizations like eliminating if statements that depend on these values.
       If you don’t have any constants like that, then you can set the member to nullptr, which our struct initialization does automatically.
   */
-  VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+  VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
   fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
   fragShaderStageInfo.module = frag_shader_module;
   fragShaderStageInfo.pName = "main";
-  fragShaderStageInfo.pSpecializationInfo = NULL;
+  fragShaderStageInfo.pSpecializationInfo = nullptr;
 
   VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-  VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
+  VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
   vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
   vertexInputInfo.vertexBindingDescriptionCount = 0;
-  vertexInputInfo.pVertexBindingDescriptions = NULL;
+  vertexInputInfo.pVertexBindingDescriptions = nullptr;
   vertexInputInfo.vertexAttributeDescriptionCount = 0;
-  vertexInputInfo.pVertexAttributeDescriptions = NULL;
+  vertexInputInfo.pVertexAttributeDescriptions = nullptr;
 
-  VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+  VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
   inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
   // VK_PRIMITIVE_TOPOLOGY_POINT_LIST: points from vertices
   // VK_PRIMITIVE_TOPOLOGY_LINE_LIST: line from every 2 vertices without reuse
@@ -868,7 +818,7 @@ bool Mjoelnir::createGraphicsPipeline() {
   // If you set the primitiveRestartEnable member to VK_TRUE, then it’s possible to break up lines and triangles in the _STRIP topology modes by using a special index of 0xFFFF or 0xFFFFFFFF.
   inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-  VkViewport viewport = {};
+  VkViewport viewport{};
   viewport.x = 0.0f;
   viewport.y = 0.0f;
   viewport.width = (float)swapChainExtent.width;
@@ -877,10 +827,7 @@ bool Mjoelnir::createGraphicsPipeline() {
   viewport.maxDepth = 1.0f;
 
   VkRect2D scissor = {};
-  VkOffset2D scissorOffset = {};
-  scissorOffset.x = 0;
-  scissorOffset.y = 0;
-  scissor.offset = scissorOffset;
+  scissor.offset = {0, 0};
   scissor.extent = swapChainExtent;
 
   VkDynamicState dynamicStates[] = {
@@ -891,19 +838,19 @@ bool Mjoelnir::createGraphicsPipeline() {
   // dynamicStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
   // dynamicStates[1] = VK_DYNAMIC_STATE_SCISSOR;
 
-  VkPipelineDynamicStateCreateInfo dynamicState = {};
+  VkPipelineDynamicStateCreateInfo dynamicState{};
   dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
   dynamicState.dynamicStateCount = 2;
   dynamicState.pDynamicStates = dynamicStates;
 
-  VkPipelineViewportStateCreateInfo viewportState = {};
+  VkPipelineViewportStateCreateInfo viewportState{};
   viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
   viewportState.viewportCount = 1;
   viewportState.pViewports = &viewport;
   viewportState.scissorCount = 1;
   viewportState.pScissors = &scissor;
 
-  VkPipelineRasterizationStateCreateInfo rasterizer = {};
+  VkPipelineRasterizationStateCreateInfo rasterizer{};
   rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
   // If depthClampEnable is set to VK_TRUE, then fragments that are beyond the near and far planes are clamped to them as opposed to discarding them.
   // This is useful in some special cases like shadow maps.
@@ -934,12 +881,12 @@ bool Mjoelnir::createGraphicsPipeline() {
   rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
 
   // Enabling multisampling requires enabling a GPU feature.
-  VkPipelineMultisampleStateCreateInfo multisampling = {};
+  VkPipelineMultisampleStateCreateInfo multisampling{};
   multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
   multisampling.sampleShadingEnable = VK_FALSE;
   multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
   multisampling.minSampleShading = 1.0f; // Optional
-  multisampling.pSampleMask = NULL; // Optional
+  multisampling.pSampleMask = nullptr; // Optional
   multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
   multisampling.alphaToOneEnable = VK_FALSE; // Optional
 
@@ -970,7 +917,7 @@ bool Mjoelnir::createGraphicsPipeline() {
   // colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
   // colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
   // colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-  VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+  VkPipelineColorBlendAttachmentState colorBlendAttachment{};
   colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
   colorBlendAttachment.blendEnable = VK_FALSE;
   colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
@@ -980,7 +927,7 @@ bool Mjoelnir::createGraphicsPipeline() {
   colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
   colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
-  VkPipelineColorBlendStateCreateInfo colorBlending = {};
+  VkPipelineColorBlendStateCreateInfo colorBlending{};
   colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
   colorBlending.logicOpEnable = VK_FALSE;
   colorBlending.logicOp = VK_LOGIC_OP_COPY;
@@ -991,19 +938,18 @@ bool Mjoelnir::createGraphicsPipeline() {
   colorBlending.blendConstants[2] = 0.0f; // Optional
   colorBlending.blendConstants[3] = 0.0f; // Optional
 
-  VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+  VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
   pipelineLayoutInfo.setLayoutCount = 0;
-  pipelineLayoutInfo.pSetLayouts = NULL;
+  pipelineLayoutInfo.pSetLayouts = nullptr;
   pipelineLayoutInfo.pushConstantRangeCount = 0;
-  pipelineLayoutInfo.pPushConstantRanges = NULL;
+  pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-  if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create pipeline layout\n");
-      return false;
+  if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+      throw std::runtime_error("Unable to create pipeline layout");
   }
 
-  VkGraphicsPipelineCreateInfo pipelineInfo = {};
+  VkGraphicsPipelineCreateInfo pipelineInfo{};
   pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
   pipelineInfo.stageCount = 2;
   pipelineInfo.pStages = shaderStages;
@@ -1013,7 +959,7 @@ bool Mjoelnir::createGraphicsPipeline() {
   pipelineInfo.pViewportState = &viewportState;
   pipelineInfo.pRasterizationState = &rasterizer;
   pipelineInfo.pMultisampleState = &multisampling;
-  pipelineInfo.pDepthStencilState = NULL; // Optional
+  pipelineInfo.pDepthStencilState = nullptr; // Optional
   pipelineInfo.pColorBlendState = &colorBlending;
   pipelineInfo.pDynamicState = &dynamicState;
 
@@ -1025,21 +971,18 @@ bool Mjoelnir::createGraphicsPipeline() {
   pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
   pipelineInfo.basePipelineIndex = -1; // Optional
 
-  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &graphicsPipeline) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create graphics pipeline\n");
-      return false;
+  if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+      throw std::runtime_error("Unable to create graphics pipeline");
   }
   
-  vkDestroyShaderModule(device, vert_shader_module, NULL);
-  vkDestroyShaderModule(device, frag_shader_module, NULL);
-
-  return true;
+  vkDestroyShaderModule(device, vert_shader_module, nullptr);
+  vkDestroyShaderModule(device, frag_shader_module, nullptr);
 }
 
-bool Mjoelnir::createFramebuffers() {
-  swapChainFramebuffers = (VkFramebuffer*)malloc(swapChainImageCount * sizeof(VkFramebuffer));
+void Mjoelnir::createFramebuffers() {
+  swapChainFramebuffers.resize(swapChainImages.size());
 
-  for (uint32_t i = 0; i < swapChainImageCount; i++) {
+  for (uint32_t i = 0; i < swapChainImages.size(); i++) {
       VkImageView attachments[] = {
           swapChainImageViews[i]
       };
@@ -1053,73 +996,60 @@ bool Mjoelnir::createFramebuffers() {
       framebufferInfo.height = swapChainExtent.height;
       framebufferInfo.layers = 1;
 
-      if (vkCreateFramebuffer(device, &framebufferInfo, NULL, &swapChainFramebuffers[i]) != VK_SUCCESS) {
-          fprintf(stderr, "Unable to create framebuffer\n");
-          return false;
+      if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+          throw std::runtime_error("Unable to create framebuffer");
       }
   }
-
-  return true;
 }
 
-bool Mjoelnir::createCommandPool() {
+void Mjoelnir::createCommandPool() {
   QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
-  VkCommandPoolCreateInfo poolInfo = {};
+  VkCommandPoolCreateInfo poolInfo{};
   poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
   poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value;
+  poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
   
-  if (vkCreateCommandPool(device, &poolInfo, NULL, &commandPool) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create command pool\n");
-      return false;
+  if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+      throw std::runtime_error("Unable to create command pool");
   }
-
-  return true;
 }
 
-bool Mjoelnir::createCommandBuffers() {
-  commandBuffers = (VkCommandBuffer*)malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkCommandBuffer));
+void Mjoelnir::createCommandBuffers() {
+  commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-  VkCommandBufferAllocateInfo allocInfo = {};
+  VkCommandBufferAllocateInfo allocInfo{};
   allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   allocInfo.commandPool = commandPool;
   // VK_COMMAND_BUFFER_LEVEL_PRIMARY: Can be submitted to a queue for execution, but cannot be called from other command buffers.
   // VK_COMMAND_BUFFER_LEVEL_SECONDARY: Cannot be submitted directly, but can be called from primary command buffers.
   allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  allocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
+  allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
 
-  if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to create command buffer\n");
-      return false;
+  if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+      throw std::runtime_error("Unable to create command buffer");
   }
-
-  return true;
 }
 
-bool Mjoelnir::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-  VkCommandBufferBeginInfo beginInfo = {};
+void Mjoelnir::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+  VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   // The flags parameter specifies how we’re going to use the command buffer. The following values are available:
   //     VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT: The command buffer will be rerecorded right after executing it once.
   //     VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT: This is a secondary command buffer that will be entirely within a single render pass.
   //     VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT: The command buffer can be resubmitted while it is also already pending execution.
   beginInfo.flags = 0; // Optional
-  beginInfo.pInheritanceInfo = NULL; // Optional
+  beginInfo.pInheritanceInfo = nullptr; // Optional
 
   if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to begin recording command buffer\n");
-      return false;
+      throw std::runtime_error("Unable to begin recording command buffer");
   }
 
-  VkRenderPassBeginInfo renderPassInfo = {};
+  VkRenderPassBeginInfo renderPassInfo{};
   renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
   renderPassInfo.renderPass = renderPass;
   renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
-  VkOffset2D renderAreaOffset = {};
-  renderAreaOffset.x = 0;
-  renderAreaOffset.y = 0;
-  renderPassInfo.renderArea.offset = renderAreaOffset;
+  renderPassInfo.renderArea.offset = {0, 0};
   renderPassInfo.renderArea.extent = swapChainExtent;
 
   VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
@@ -1150,10 +1080,7 @@ bool Mjoelnir::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
   vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
   VkRect2D scissor = {};
-  VkOffset2D scissorOffset = {};
-  scissorOffset.x = 0;
-  scissorOffset.y = 0;
-  scissor.offset = scissorOffset;
+  scissor.offset = {0, 0};
   scissor.extent = swapChainExtent;
   vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
@@ -1166,11 +1093,8 @@ bool Mjoelnir::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
   vkCmdEndRenderPass(commandBuffer);
 
   if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-      fprintf(stderr, "Unable to record command buffer\n");
-      return false;
+      throw std::runtime_error("Unable to record command buffer");
   }
-
-  return true;
 }
 
 void Mjoelnir::createSyncObjects() {
@@ -1179,82 +1103,45 @@ void Mjoelnir::createSyncObjects() {
 
   inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
-  VkSemaphoreCreateInfo semaphoreInfo = {};
+  VkSemaphoreCreateInfo semaphoreInfo{};
   semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-  VkFenceCreateInfo fenceInfo = {};
+  VkFenceCreateInfo fenceInfo{};
   fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   // Makes this fence start signaled.
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-      if (vkCreateSemaphore(device, &semaphoreInfo, NULL, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-          vkCreateSemaphore(device, &semaphoreInfo, NULL, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-          vkCreateFence(device, &fenceInfo, NULL, &inFlightFences[i]) != VK_SUCCESS
+      if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+          vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+          vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS
       ) {
           throw std::runtime_error("Failed to create synchronization objects");
       }
   }
 }
 
-bool Mjoelnir::initVulkan() {
+void Mjoelnir::initVulkan() {
   createInstance();
-
   setupDebugMessenger();
-
   createSurface();
   pickPhysicalDevice();
-
-  if (!createLogicalDevice()) {
-      fprintf(stderr, "Failed to create logical device\n");
-      return false;
-  }
-
-  if (!createSwapChain()) {
-      fprintf(stderr, "Failed to create swap chain\n");
-      return false;
-  }
-
-  if (!createImageViews()) {
-      fprintf(stderr, "Failed to create image views\n");
-      return false;
-  }
-
-  if (!createRenderPass()) {
-      fprintf(stderr, "Failed to create render pass\n");
-      return false;
-  }
-
-  if (!createGraphicsPipeline()) {
-      fprintf(stderr, "Failed to create graphics pipeline\n");
-      return false;
-  }
-
-  if (!createFramebuffers()) {
-      fprintf(stderr, "Failed to create frame buffers\n");
-      return false;
-  }
-
-  if (!createCommandPool()) {
-      fprintf(stderr, "Failed to create command pool\n");
-      return false;
-  }
-
-  if (!createCommandBuffers()) {
-      fprintf(stderr, "Failed to create command buffer\n");
-      return false;
-  }
-
+  createLogicalDevice();
+  createSwapChain();
+  createImageViews();
+  createRenderPass();
+  createGraphicsPipeline();
+  createFramebuffers();
+  createCommandPool();
+  createCommandBuffers();
   createSyncObjects();
-
-  return true;
 }
 
-VkSurfaceFormatKHR Mjoelnir::chooseSwapSurfaceFormat(const VkSurfaceFormatKHR* availableFormats, uint32_t availableFormatsCount) {
-  for (int i = 0; i < availableFormatsCount; i++) {
-      if (availableFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-          return availableFormats[i];
-      }
+VkSurfaceFormatKHR Mjoelnir::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+  for (const auto& availableFormat : availableFormats) {
+    if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+      return availableFormat;
+    }
   }
 
   // Here we are assuming that we already checked that we have a non-zero amount of available formats
@@ -1262,15 +1149,15 @@ VkSurfaceFormatKHR Mjoelnir::chooseSwapSurfaceFormat(const VkSurfaceFormatKHR* a
   return availableFormats[0];
 }
 
-VkPresentModeKHR Mjoelnir::chooseSwapPresentMode(const VkPresentModeKHR* availablePresentModes, uint32_t availablePresentModesCount) {
+VkPresentModeKHR Mjoelnir::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
   // VK_PRESENT_MODE_FIFO_KHR preferred on mobile devices?
   // VK_PRESENT_MODE_MAILBOX_KHR = triple buffering
   // VK_PRESENT_MODE_FIFO_KHR = always available
 
-  for (int i = 0; i < availablePresentModesCount; i++) {
-      if (availablePresentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
-          return availablePresentModes[i];
-      }
+  for (const auto& availablePresentMode : availablePresentModes) {
+    if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+      return availablePresentMode;
+    }
   }
 
   return VK_PRESENT_MODE_IMMEDIATE_KHR;
@@ -1279,9 +1166,7 @@ VkPresentModeKHR Mjoelnir::chooseSwapPresentMode(const VkPresentModeKHR* availab
 void Mjoelnir::mainLoop() {
   while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
-      if (!drawFrame()) {
-          break;
-      }
+      drawFrame();
   }
 
   vkDeviceWaitIdle(device);
@@ -1289,12 +1174,7 @@ void Mjoelnir::mainLoop() {
 
 void Mjoelnir::run() {
   initWindow();
-
-  if (!initVulkan()) {
-      return;
-  }
-
+  initVulkan();
   mainLoop();
-
   cleanup();
 }

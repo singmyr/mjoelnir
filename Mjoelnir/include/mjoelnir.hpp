@@ -21,23 +21,21 @@
 #include <limits.h>
 
 #include <vector>
-
-struct optional_uint32_t {
-    bool hasValue;
-    uint32_t value;
-};
+#include <optional>
 
 struct QueueFamilyIndices {
-    optional_uint32_t graphicsFamily;
-    optional_uint32_t presentFamily;
+    std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
+
+    bool isComplete() {
+        return graphicsFamily.has_value() && presentFamily.has_value();
+    }
 };
 
 struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
-    VkSurfaceFormatKHR* formats;
-    uint32_t formatCount;
-    VkPresentModeKHR* presentModes;
-    uint32_t presentModeCount;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
 };
 
 class Mjoelnir {
@@ -50,17 +48,16 @@ private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     VkSwapchainKHR swapChain;
-    VkImage* swapChainImages;
-    uint32_t swapChainImageCount;
+    std::vector<VkImage> swapChainImages;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
-    VkImageView *swapChainImageViews;
+    std::vector<VkImageView> swapChainImageViews;
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
-    VkFramebuffer* swapChainFramebuffers;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkCommandPool commandPool;
-    VkCommandBuffer* commandBuffers;
+    std::vector<VkCommandBuffer> commandBuffers;
 
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
@@ -71,31 +68,31 @@ private:
     // There are platform specific surfaces if necessary
     VkSurfaceKHR surface;
 
-    VkShaderModule createShaderModule(uint32_t* code, size_t code_size);
+    VkShaderModule createShaderModule(const std::vector<char>& code);
     void initWindow();
     void cleanup();
-    bool drawFrame();
+    void drawFrame();
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
     void createInstance();
-    bool setupDebugMessenger();
+    void setupDebugMessenger();
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
-    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR* capabilities);
+    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     bool isDeviceSuitable(VkPhysicalDevice device);
     void pickPhysicalDevice();
-    bool createLogicalDevice();
+    void createLogicalDevice();
     void createSurface();
-    bool createSwapChain();
-    bool createImageViews();
-    bool createRenderPass();
-    bool createGraphicsPipeline();
-    bool createFramebuffers();
-    bool createCommandPool();
-    bool createCommandBuffers();
-    bool recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    void createSwapChain();
+    void createImageViews();
+    void createRenderPass();
+    void createGraphicsPipeline();
+    void createFramebuffers();
+    void createCommandPool();
+    void createCommandBuffers();
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void createSyncObjects();
-    bool initVulkan();
-    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const VkSurfaceFormatKHR* availableFormats, uint32_t availableFormatsCount);
-    VkPresentModeKHR chooseSwapPresentMode(const VkPresentModeKHR* availablePresentModes, uint32_t availablePresentModesCount);
+    void initVulkan();
+    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     void mainLoop();
 public:
     void run();
