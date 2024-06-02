@@ -63,6 +63,8 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
 
+    bool framebufferResized = false;
+
     uint32_t currentFrame = 0;
 
     // There are platform specific surfaces if necessary
@@ -82,6 +84,8 @@ private:
     void createLogicalDevice();
     void createSurface();
     void createSwapChain();
+    void cleanupSwapChain();
+    void recreateSwapChain();
     void createImageViews();
     void createRenderPass();
     void createGraphicsPipeline();
@@ -93,6 +97,7 @@ private:
     void initVulkan();
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     void mainLoop();
 public:
     void run();

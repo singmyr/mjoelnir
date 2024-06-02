@@ -286,12 +286,25 @@ void Mjoelnir::initWindow() {
   glfwInit();
 
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+  glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
   window = glfwCreateWindow(WIDTH, HEIGHT, "Mjoelnir", nullptr, nullptr);
+  glfwSetWindowUserPointer(window, this);
+  glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+}
+
+void Mjoelnir::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+  auto app = reinterpret_cast<Mjoelnir*>(glfwGetWindowUserPointer(window));
+  app->framebufferResized = true;
 }
 
 void Mjoelnir::cleanup() {
+  cleanupSwapChain();
+
+  vkDestroyPipeline(device, graphicsPipeline, nullptr);
+  vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+  vkDestroyRenderPass(device, renderPass, nullptr);
+
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
       vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -300,19 +313,6 @@ void Mjoelnir::cleanup() {
 
   vkDestroyCommandPool(device, commandPool, nullptr);
 
-  for (auto framebuffer : swapChainFramebuffers) {
-      vkDestroyFramebuffer(device, framebuffer, nullptr);
-  }
-
-  vkDestroyPipeline(device, graphicsPipeline, nullptr);
-  vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-  vkDestroyRenderPass(device, renderPass, nullptr);
-
-  for (auto imageView : swapChainImageViews) {
-      vkDestroyImageView(device, imageView, nullptr);
-  }
-
-  vkDestroySwapchainKHR(device, swapChain, nullptr);
   vkDestroyDevice(device, nullptr);
 
   if (enableValidationLayers) {
@@ -335,10 +335,17 @@ void Mjoelnir::drawFrame() {
   // Present the swap chain image
 
   vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-  vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
   uint32_t imageIndex;
-  vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+  VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    recreateSwapChain();
+    return;
+  } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    throw std::runtime_error("Failed to acquire swapchain image");
+  }
+
+  vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
   vkResetCommandBuffer(commandBuffers[currentFrame], 0);
   recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
@@ -376,7 +383,13 @@ void Mjoelnir::drawFrame() {
 
   presentInfo.pResults = nullptr; // Optional
 
-  vkQueuePresentKHR(presentQueue, &presentInfo);
+  result = vkQueuePresentKHR(presentQueue, &presentInfo);
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
+    framebufferResized = false;
+    recreateSwapChain();
+  } else if (result != VK_SUCCESS) {
+    throw std::runtime_error("Failed to present swapchain image");
+  }
 
   currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -674,6 +687,41 @@ void Mjoelnir::createSwapChain() {
   vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
   swapChainImages.resize(imageCount);
   vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+}
+
+void Mjoelnir::cleanupSwapChain() {
+  for (auto framebuffer : swapChainFramebuffers) {
+      vkDestroyFramebuffer(device, framebuffer, nullptr);
+  }
+
+  for (auto imageView : swapChainImageViews) {
+      vkDestroyImageView(device, imageView, nullptr);
+  }
+
+  vkDestroySwapchainKHR(device, swapChain, nullptr);
+}
+
+void Mjoelnir::recreateSwapChain() {
+  // That’s all it takes to recreate the swap chain!
+  // However, the disadvantage of this approach is that we need to stop all rendering before creating the new swap chain.
+  // It is possible to create a new swap chain while drawing commands on an image from the old swap chain are still in-flight.
+  // You need to pass the previous swap chain to the oldSwapchain field in the VkSwapchainCreateInfoKHR struct and destroy the old swap chain as soon as you’ve finished using it.
+  int width = 0;
+  int height = 0;
+
+  glfwGetFramebufferSize(window, &width, &height);
+  while (width == 0 || height == 0) {
+    glfwGetFramebufferSize(window, &width, &height);
+    glfwWaitEvents();
+  }
+
+  vkDeviceWaitIdle(device);
+
+  cleanupSwapChain();
+
+  createSwapChain();
+  createImageViews();
+  createFramebuffers();
 }
 
 void Mjoelnir::createImageViews() {
